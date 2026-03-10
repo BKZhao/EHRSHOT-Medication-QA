@@ -7,9 +7,9 @@
 ## 项目结构
 
 ```
-ehrshot_analysis/
+ehrshot-medication-qa/
 │
-├── data/                              # 所有数据文件
+├── data/                              # 所有数据文件（.gitignore 已排除）
 │   ├── visit_occurrence.csv           # 住院记录（含科室、入出院时间）
 │   ├── condition_occurrence.csv       # 诊断记录（含 visit_occurrence_id）
 │   ├── drug_exposure.csv              # 用药记录
@@ -168,9 +168,34 @@ EHRSHOT 中的医学代码都是标准化编码（如 `SNOMED/59621000`、`RxNor
 ## 运行方式
 
 ```bash
-cd /home/bingkun_zhao/ehrshot_analysis
+cd /home/bingkun_zhao/ehrshot-medication-qa
 
 # Step 1 & 2: 在 Jupyter 中运行对应 notebook
 # Step 3: 修改 TARGET_COUNT 控制生成数量
 python3 step3_generate_qa.py
+```
+
+---
+
+## 数据集统计
+
+- **236 个 QA**
+- **2,773 种 GT 用药**
+- **97.7% ATC 覆盖率**（2,709/2,773）
+- **平均每个 QA 包含 11.8 种 GT 用药**
+
+---
+
+## 引用
+
+如果使用本数据集，请引用：
+
+```bibtex
+@misc{ehrshot-medication-qa-2026,
+  author = {Zhao, Bingkun},
+  title = {EHRSHOT Medication QA Dataset},
+  year = {2026},
+  publisher = {GitHub},
+  url = {https://github.com/BKZhao/EHRSHOT-Medication-QA}
+}
 ```
