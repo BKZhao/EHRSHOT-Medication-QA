@@ -195,7 +195,59 @@ tacrolimus, cyclosporine, sirolimus, mycophenolate
 
 **脚本**：`step3_generate_qa.py`
 
-### 5.1 题干构建
+### 5.0 QA 题目结构概览
+
+每个 QA 包含以下字段：
+
+**JSON 格式字段（qa_output_with_atc.json）：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `qa_id` | string | QA 唯一标识（如 `qa_001`） |
+| `patient_id` | string | 患者 ID |
+| `visit_id` | string | 住院记录 ID |
+| `care_site` | string | 科室名称 |
+| `los_days` | int | 住院天数（Length of Stay） |
+| `age` | int | 年龄 |
+| `gender` | string | 性别（Male/Female） |
+| `clinical_note` | string | 临床题干（包含前病史、入院诊断、Vitals、Labs、入院前用药） |
+| `question` | string | 问题："What medications would you prescribe for this patient after discharge?" |
+| `answer` | string | 答案：GT 用药列表（含 ATC 分类和续开/新开标签） |
+| `ground_truth_medications` | list | GT 用药详细信息（结构化数据，见下方说明） |
+| `num_gt_medications` | int | GT 用药总数 |
+| `num_continued` | int | 续开用药数量 |
+| `num_new` | int | 新开用药数量 |
+
+**ground_truth_medications 结构：**
+
+每个药物包含以下字段：
+```json
+{
+  "medication_name": "levothyroxine sodium 0.025 MG Oral Tablet",
+  "atc": {
+    "atc4_code": "H03AA",
+    "atc4_name": "Thyroid hormones",
+    "atc3_code": "H03A",
+    "atc3_name": "Thyroid preparations",
+    "atc2_code": "H03",
+    "atc2_name": "Thyroid therapy",
+    "atc1_code": "H",
+    "atc1_name": "Systemic hormonal preparations, excl. sex hormones and insulins"
+  },
+  "is_continued": true
+}
+```
+
+**CSV 格式字段（qa_output_with_atc.csv）：**
+
+CSV 文件包含以下列（不包含 `ground_truth_medications` 结构化数据）：
+- `qa_id`, `patient_id`, `visit_id`, `care_site`, `los_days`, `age`, `gender`
+- `clinical_note`, `question`, `answer`
+- `num_gt_medications`, `num_continued`, `num_new`
+
+CSV 格式便于在 Excel/Pandas 中进行统计分析，JSON 格式便于程序读取和处理。
+
+### 5.1 题干构建（clinical_note）
 
 对每个候选 visit，按以下顺序构建 `clinical_note`：
 
@@ -296,6 +348,100 @@ A        消化道及代谢（Alimentary tract and metabolism）
 映射来源：`data/rxnorm_to_atc.csv.csv`（25,356 条 RxNorm → ATC 映射）
 
 查找逻辑：从药物的 RxNorm 代码中提取 `rxcui`，在映射表中查找对应的 ATC 信息。
+
+### 5.4 完整 QA 示例
+
+以下是一个真实的 QA 样例（qa_003），展示了题干和答案的完整格式：
+
+```
+PATIENT: 65-year-old Male
+Department: GASTROENTEROLOGY
+Admission: [REDACTED]
+Discharge: [REDACTED]
+
+─── PRE-ADMISSION PROBLEM LIST ────────────────────────────────────────
+Cardiomyopathy  (since [YEAR])
+Hypertrophic obstructive cardiomyopathy  (since [YEAR])
+Ventricular tachycardia  (since [YEAR])
+Paroxysmal atrial fibrillation  (since [YEAR])
+Prediabetes  (since [YEAR])
+Persistent atrial fibrillation  (since [YEAR])
+
+─── ADMISSION DIAGNOSIS ───────────────────────────────────────────────
+Disorder of upper gastrointestinal tract
+Chronic duodenal ulcer with hemorrhage
+Gastric ulcer without hemorrhage AND without perforation
+
+─── ADMISSION VITALS ──────────────────────────────────────────────────
+Systolic blood pressure: 76.00 mmHg
+Diastolic blood pressure: 59.00 mmHg
+Pulse rate: 95.00 bpm
+Respiratory rate: 16.00 bpm
+Body temperature: 98.30 F
+Body weight: 4288.00 ounces
+Body height: 75.50 in
+
+─── ADMISSION LABS ([REDACTED]) ────────────────────────────────────────
+Measurement of Helicobacter pylori antibody: Negative
+Mean blood pressure: 73.00 mmHg
+Platelet count: 600.00 K/uL
+Hemoglobin: 7.50 g/dL
+RBC distribution width: 17.60 %
+Hematocrit: 23.00 %
+Potassium: 4.80 mmol/L
+Glucose: 13.00 mmol/L
+Creatinine: 1.59 mg/dL
+Heart rate: 94.00 bpm
+
+─── CURRENT MEDICATIONS (prior to admission) ──────────────────────────────
+  - ascorbic acid  [ATC: A11GA - Ascorbic acid (vitamin C), plain]
+  - glucose  [ATC: V06DC - Carbohydrates]
+  - acetaminophen  [ATC: N02BE - Anilides]
+  - amiodarone hydrochloride  [ATC: C01BD - Antiarrhythmics, class III]
+  - polyethylene glycol  [ATC: A06AD - Osmotically acting laxatives]
+  - aspirin  [ATC: B01AC - Platelet aggregation inhibitors excl. heparin]
+  - Microencapsulated potassium chloride  [ATC: A12BA - Potassium]
+  - ferrous sulfate  [ATC: B03AA - Iron bivalent, oral preparations]
+  - spironolactone  [ATC: C03DA - Aldosterone antagonists]
+  - apixaban  [ATC: B01AF - Direct factor Xa inhibitors]
+  - tramadol hydrochloride  [ATC: N02AX - Other opioids]
+  - sennosides, USP  [ATC: A06AB - Contact laxatives]
+  - oxycodone hydrochloride  [ATC: N02AA - Natural opium alkaloids]
+  - gabapentin  [ATC: N02BF - Gabapentinoids]
+  - docusate sodium  [ATC: A06AA - Softeners, emollients]
+  - 12 HR guaifenesin  [ATC: R05CA - Expectorants]
+  - rosuvastatin calcium  [ATC: C10AA - HMG CoA reductase inhibitors]
+  - magnesium citrate  [ATC: Unknown]
+  - calcium carbonate  [ATC: A02AC - Calcium compounds]
+  - potassium chloride  [ATC: Unknown]
+  - melatonin  [ATC: N05CH - Melatonin receptor agonists]
+  - metoprolol tartrate  [ATC: C07AB - Beta blocking agents, selective]
+  - rivaroxaban  [ATC: B01AF - Direct factor Xa inhibitors]
+  - ondansetron  [ATC: A04AA - Serotonin (5HT3) antagonists]
+  - suvorexant  [ATC: N05CJ - Orexin receptor antagonists]
+
+================================================================================
+
+CLINICAL DECISION TASK:
+
+Based on the admission information above, list the medications you would
+prescribe for this patient after discharge.
+
+Medication Orders:
+1. clarithromycin  [ATC: J01FA - Macrolides]  [New]
+2. metoprolol tartrate  [ATC: C07AB - Beta blocking agents, selective]  [Continued]
+3. 12 HR guaifenesin  [ATC: R05CA - Expectorants]  [Continued]
+4. oxycodone hydrochloride  [ATC: N02AA - Natural opium alkaloids]  [Continued]
+```
+
+**临床解读：**
+- **患者背景**：65岁男性，有心血管疾病史（心肌病、房颤），本次因消化道溃疡出血入院
+- **入院检查**：血红蛋白 7.5 g/dL（贫血），幽门螺杆菌抗体阴性，血压偏低（76/59 mmHg）
+- **GT 用药分析**：
+  - **clarithromycin [New]**：新开抗生素，用于治疗消化道溃疡（尽管 H. pylori 抗体阴性，但可能基于其他临床考虑）
+  - **metoprolol tartrate [Continued]**：β受体阻滞剂，继续用于心血管疾病管理
+  - **12 HR guaifenesin [Continued]**：祛痰药，继续用于呼吸道症状管理
+  - **oxycodone hydrochloride [Continued]**：阿片类镇痛药，继续用于疼痛管理
 
 ---
 
