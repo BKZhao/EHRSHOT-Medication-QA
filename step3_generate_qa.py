@@ -7,19 +7,21 @@ Step 3: 生成用药管理QA数据集
 import pandas as pd
 import json
 import sys
+import os
 from datetime import timedelta
 
-sys.path.insert(0, '/home/bingkun_zhao/primekg_project/ehrshot_qa_generation/medication_management_qa')
+# Add current directory to path for medical_code_mapping import
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from medical_code_mapping import get_medication_name, get_code_description
 
 # ── 配置 ──────────────────────────────────────────────────────────────────
 EHRSHOT_CSV = "/data/ehr/EHRSHOT/EHRSHOT_ASSETS/data/ehrshot.csv"
-CANDIDATES_CSV = "/home/bingkun_zhao/ehrshot_analysis/output/qa_candidate/qa_candidate_visits.csv"
-CONDITION_CSV = "/home/bingkun_zhao/ehrshot_analysis/data/condition_occurrence.csv"
-CONCEPT_CSV = "/home/bingkun_zhao/ehrshot_analysis/data/concept.csv"
-RXNORM_ATC_CSV = "/home/bingkun_zhao/ehrshot_analysis/data/rxnorm_to_atc.csv.csv"
-OUTPUT_JSON = "/home/bingkun_zhao/ehrshot_analysis/output/QA/qa_output_with_atc.json"
-OUTPUT_CSV = "/home/bingkun_zhao/ehrshot_analysis/output/QA/qa_output_with_atc.csv"
+CANDIDATES_CSV = "/home/bingkun_zhao/ehrshot-medication-qa/output/qa_candidate/qa_candidate_visits.csv"
+CONDITION_CSV = "/home/bingkun_zhao/ehrshot-medication-qa/data/condition_occurrence.csv"
+CONCEPT_CSV = "/home/bingkun_zhao/ehrshot-medication-qa/data/concept.csv"
+RXNORM_ATC_CSV = "/home/bingkun_zhao/ehrshot-medication-qa/data/rxnorm_to_atc.csv.csv"
+OUTPUT_JSON = "/home/bingkun_zhao/ehrshot-medication-qa/output/QA/qa_output_with_atc.json"
+OUTPUT_CSV = "/home/bingkun_zhao/ehrshot-medication-qa/output/QA/qa_output_with_atc.csv"
 
 TARGET_COUNT = 236
 RECENT_MED_LOOKBACK_DAYS = 30
@@ -129,15 +131,20 @@ atc_df['rxcui'] = atc_df['rxcui'].str.strip('"')
 atc_map = {}
 for _, row in atc_df.iterrows():
     rxcui = str(row['rxcui'])
+    # Clean up values, convert \N to "Unknown"
+    def clean_atc_value(val):
+        val_str = str(val).strip('"')
+        return "Unknown" if val_str in ('\\N', 'nan', '', 'None') else val_str
+
     atc_map[rxcui] = {
-        'atc4_code': str(row['atc4_code']).strip('"'),
-        'atc4_name': str(row['atc4_name']).strip('"'),
-        'atc3_code': str(row['atc3_code']).strip('"'),
-        'atc3_name': str(row['atc3_name']).strip('"'),
-        'atc2_code': str(row['atc2_code']).strip('"'),
-        'atc2_name': str(row['atc2_name']).strip('"'),
-        'atc1_code': str(row['atc1_code']).strip('"'),
-        'atc1_name': str(row['atc1_name']).strip('"'),
+        'atc4_code': clean_atc_value(row['atc4_code']),
+        'atc4_name': clean_atc_value(row['atc4_name']),
+        'atc3_code': clean_atc_value(row['atc3_code']),
+        'atc3_name': clean_atc_value(row['atc3_name']),
+        'atc2_code': clean_atc_value(row['atc2_code']),
+        'atc2_name': clean_atc_value(row['atc2_name']),
+        'atc1_code': clean_atc_value(row['atc1_code']),
+        'atc1_name': clean_atc_value(row['atc1_name']),
     }
 print(f"   映射条目数: {len(atc_map):,}")
 
@@ -349,11 +356,13 @@ for idx_i, (i, row) in enumerate(candidates.iterrows()):
         lines.append("─── CURRENT MEDICATIONS (prior to admission) ──────────────────────────────")
         for m in valid_pre_meds:
             atc = m['atc']
-            # Only show ATC if valid (not \N or empty)
-            if atc.get('atc4_code') and atc['atc4_code'] not in ('\\N', 'nan', ''):
-                lines.append(f"  - {m['name']}  [ATC: {atc['atc4_code']} - {atc['atc4_name']}]")
+            atc_code = atc.get('atc4_code', 'Unknown')
+            atc_name = atc.get('atc4_name', 'Unknown')
+
+            if atc_code != 'Unknown':
+                lines.append(f"  - {m['name']}  [ATC: {atc_code} - {atc_name}]")
             else:
-                lines.append(f"  - {m['name']}")
+                lines.append(f"  - {m['name']}  [ATC: Unknown]")
         lines.append("")
 
     lines += [
@@ -372,20 +381,32 @@ for idx_i, (i, row) in enumerate(candidates.iterrows()):
     for idx, med in enumerate(gt_drugs, 1):
         status = "Continued" if med["is_continued"] else "New"
         atc = med['atc']
-        # Keep only words before the first numeric token (strips dose + form)
+        # Strip dose/form: keep everything before dose pattern (e.g., "0.025 MG", "600 MG")
+        # Dose units: MG, ML, MCG, UNIT, UNT, %, etc. (not HR which is time)
+        dose_units = {'MG', 'ML', 'MCG', 'UNIT', 'UNT', '%', 'G', 'L'}
         words = med['medication_name'].split()
         name_words = []
-        for w in words:
-            if any(c.isdigit() for c in w):
-                break
-            name_words.append(w)
-        drug_base = " ".join(name_words).rstrip(",") if name_words else words[0]
 
-        # Check if ATC is valid (not \N or empty)
-        if atc.get('atc4_code') and atc['atc4_code'] not in ('\\N', 'nan', ''):
-            answer_lines.append(f"{idx}. {drug_base}  [ATC: {atc['atc4_code']} - {atc['atc4_name']}]  [{status}]")
+        for i, w in enumerate(words):
+            # Check if this word is a number and next word is a dose unit
+            if i < len(words) - 1:
+                next_word = words[i + 1]
+                # If current word has digits and next is a dose unit
+                if any(c.isdigit() for c in w) and next_word in dose_units:
+                    # Found dose pattern, stop here
+                    break
+            name_words.append(w)
+
+        drug_base = " ".join(name_words).rstrip(",") if name_words else med['medication_name']
+
+        # Display ATC info (show "Unknown" if not available)
+        atc_code = atc.get('atc4_code', 'Unknown')
+        atc_name = atc.get('atc4_name', 'Unknown')
+
+        if atc_code != 'Unknown':
+            answer_lines.append(f"{idx}. {drug_base}  [ATC: {atc_code} - {atc_name}]  [{status}]")
         else:
-            answer_lines.append(f"{idx}. {drug_base}  [{status}]")
+            answer_lines.append(f"{idx}. {drug_base}  [ATC: Unknown]  [{status}]")
 
     answer = "\n".join(answer_lines)
 

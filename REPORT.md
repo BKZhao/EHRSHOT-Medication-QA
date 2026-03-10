@@ -155,21 +155,6 @@ tacrolimus, cyclosporine, sirolimus, mycophenolate
       │
       ▼
 最终候选: 236 条 visits
-```
-
-### 4.4 性能优化
-
-Step 2 需要对每个 visit 扫描数百万条记录，原始实现极慢。优化方案：
-
-1. **预解析日期**：在循环外一次性将所有日期列转为 `datetime` 类型，避免循环内重复调用 `pd.to_datetime()`
-2. **建立 patient_id 索引**：用 `groupby` 将 conditions/measures/drugs 按 `patient_id` 分组为字典，每次查询从 O(N) 降为 O(1)
-3. **建立 visit_id 索引**：`condition_occurrence` 按 `visit_occurrence_id` 分组，快速查找入院诊断
-
-```python
-# 预处理示例
-conditions['start_dt'] = pd.to_datetime(conditions['start'], errors='coerce')
-conditions_by_patient = {pid: grp for pid, grp in conditions.groupby('patient_id')}
-```
 
 **输出**：`output/qa_candidate/qa_candidate_visits.csv`（236 条 visits）
 
