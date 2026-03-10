@@ -102,7 +102,87 @@ GT = 持续用药 ∪ 新增用药
 
 ---
 
-## QA 格式示例
+## QA 格式详解
+
+每个 QA 包含以下字段：
+
+| 字段 | 说明 |
+|------|------|
+| `qa_id` | QA 唯一标识（如 `qa_001`） |
+| `patient_id` | 患者 ID |
+| `visit_id` | 住院记录 ID |
+| `care_site` | 科室名称 |
+| `age` | 年龄 |
+| `gender` | 性别 |
+| `clinical_note` | 题干（包含病史、诊断、体征、实验室检查、入院前用药） |
+| `question` | 问题（固定为：What medications would you prescribe for this patient after discharge?） |
+| `answer` | 答案（GT 用药列表，含 ATC 分类和续开/新开标签） |
+| `num_gt_medications` | GT 用药总数 |
+| `num_continued` | 续开用药数量 |
+| `num_new` | 新开用药数量 |
+| `ground_truth_medications` | GT 用药详细信息（JSON 数组） |
+
+### 题干结构
+
+```
+PATIENT: {age}-year-old {gender}
+Department: {care_site_name}
+Admission: [REDACTED]
+Discharge: [REDACTED]
+
+─── PRE-ADMISSION PROBLEM LIST ────────────────────────────────────────
+{既往病史列表，每条标注 (since [YEAR])}
+
+─── ADMISSION DIAGNOSIS ───────────────────────────────────────────────
+{本次入院诊断列表}
+
+─── ADMISSION VITALS ──────────────────────────────────────────────────
+Systolic blood pressure: {value} mmHg
+Diastolic blood pressure: {value} mmHg
+Pulse rate: {value} bpm
+Respiratory rate: {value} bpm
+Body temperature: {value} °C/F  # 根据数值自动判断单位
+Body weight: {value} ounces
+Body height: {value} in
+
+─── ADMISSION LABS ([REDACTED]) ────────────────────────────────────────
+{实验室检查结果，格式：指标名: 数值 单位}
+# 过滤掉数值为 0 和无单位的数值型条目
+
+─── CURRENT MEDICATIONS (prior to admission) ──────────────────────────────
+  - {药物名}  [ATC: {code} - {name}]
+  ...
+
+================================================================================
+
+CLINICAL DECISION TASK:
+
+Based on the admission information above, list the medications you would
+prescribe for this patient after discharge.
+```
+
+### 答案格式
+
+```
+Medication Orders:
+1. {药物通用名}  [ATC: {code} - {name}]  [Continued/New]
+2. {药物通用名}  [ATC: {code} - {name}]  [Continued/New]
+...
+```
+
+**说明**：
+- 药物名已去除剂量和剂型（如 `furosemide 20 MG Oral Tablet` → `furosemide`）
+- ATC 代码为第 4 级分类（最细粒度）
+- `[Continued]`：入院前 30 天和出院后 7 天都有的药物
+- `[New]`：仅出院后 7 天有的药物
+- 无效 ATC（`\N`）已被过滤，不显示 ATC 信息
+
+---
+
+## 完整示例
+
+<details>
+<summary>点击展开查看完整 QA 示例</summary>
 
 ```
 PATIENT: 46-year-old Male
@@ -146,6 +226,8 @@ Medication Orders:
 2. rifaximin  [ATC: A07AA - Antibiotics]  [New]
 3. levothyroxine sodium  [ATC: H03AA - Thyroid hormones]  [Continued]
 ```
+
+</details>
 
 ---
 
