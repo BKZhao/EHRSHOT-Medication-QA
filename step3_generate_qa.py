@@ -80,6 +80,31 @@ def _fmt_val(val):
     except (TypeError, ValueError):
         return str(val)
 
+def truncate_medication_name(full_name):
+    """
+    Truncate medication name to remove dose/form, keeping time-release info.
+
+    Examples:
+        "12 HR guaifenesin 600 MG Extended Release Oral Tablet" -> "12 HR guaifenesin"
+        "levothyroxine sodium 0.025 MG Oral Tablet" -> "levothyroxine sodium"
+        "acetaminophen 325 MG Oral Tablet" -> "acetaminophen"
+    """
+    dose_units = {'MG', 'ML', 'MCG', 'UNIT', 'UNT', '%', 'G', 'L'}
+    words = full_name.split()
+    name_words = []
+
+    for i, w in enumerate(words):
+        # Check if this word is a number and next word is a dose unit
+        if i < len(words) - 1:
+            next_word = words[i + 1]
+            # If current word has digits and next is a dose unit
+            if any(c.isdigit() for c in w) and next_word in dose_units:
+                # Found dose pattern, stop here
+                break
+        name_words.append(w)
+
+    return " ".join(name_words).rstrip(",") if name_words else full_name
+
 # ── 加载数据 ──────────────────────────────────────────────────────────────
 print("="*80)
 print("生成包含ATC信息的QA（v2）")
@@ -240,7 +265,7 @@ for idx_i, (i, row) in enumerate(candidates.iterrows()):
         seen_gt.add(base)
         atc_info = get_atc_info(dr["code"])
         gt_drugs.append({
-            "medication_name": drug_name,
+            "medication_name": truncate_medication_name(drug_name),
             "atc": atc_info,
             "is_continued": base in recent_drug_bases,
         })
@@ -381,32 +406,16 @@ for idx_i, (i, row) in enumerate(candidates.iterrows()):
     for idx, med in enumerate(gt_drugs, 1):
         status = "Continued" if med["is_continued"] else "New"
         atc = med['atc']
-        # Strip dose/form: keep everything before dose pattern (e.g., "0.025 MG", "600 MG")
-        # Dose units: MG, ML, MCG, UNIT, UNT, %, etc. (not HR which is time)
-        dose_units = {'MG', 'ML', 'MCG', 'UNIT', 'UNT', '%', 'G', 'L'}
-        words = med['medication_name'].split()
-        name_words = []
-
-        for i, w in enumerate(words):
-            # Check if this word is a number and next word is a dose unit
-            if i < len(words) - 1:
-                next_word = words[i + 1]
-                # If current word has digits and next is a dose unit
-                if any(c.isdigit() for c in w) and next_word in dose_units:
-                    # Found dose pattern, stop here
-                    break
-            name_words.append(w)
-
-        drug_base = " ".join(name_words).rstrip(",") if name_words else med['medication_name']
+        drug_name = med['medication_name']  # Already truncated
 
         # Display ATC info (show "Unknown" if not available)
         atc_code = atc.get('atc4_code', 'Unknown')
         atc_name = atc.get('atc4_name', 'Unknown')
 
         if atc_code != 'Unknown':
-            answer_lines.append(f"{idx}. {drug_base}  [ATC: {atc_code} - {atc_name}]  [{status}]")
+            answer_lines.append(f"{idx}. {drug_name}  [ATC: {atc_code} - {atc_name}]  [{status}]")
         else:
-            answer_lines.append(f"{idx}. {drug_base}  [ATC: Unknown]  [{status}]")
+            answer_lines.append(f"{idx}. {drug_name}  [ATC: Unknown]  [{status}]")
 
     answer = "\n".join(answer_lines)
 
